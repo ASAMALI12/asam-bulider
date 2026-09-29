@@ -1,0 +1,6 @@
+{
+  "name": "APK Studio AI - منصة بناء وتصحيح تطبيقات أندرويد الذكية",
+  "description": "بيئة تطوير وتصحيح ذكية لبناء وتصدير ملفات APK وتطبيقات Capacitor وأندرويد مباشرة مع محاكي فوري وفحص الأكواد بالذكاء الاصطناعي.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

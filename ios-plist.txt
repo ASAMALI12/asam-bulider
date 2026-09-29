@@ -1,0 +1,5 @@
+NSCameraUsageDescription: يتطلب التطبيق صلاحية الوصول إلى الكاميرا لالتقاط الصور ومسح الرموز.
+NSMicrophoneUsageDescription: يتطلب التطبيق الوصول إلى الميكروفون للتسجيل الصوتي والمحادثات.
+NSPhotoLibraryUsageDescription: يتطلب التطبيق الوصول إلى مكتبة الصور لاختيار وحفظ الملفات.
+NSLocationWhenInUseUsageDescription: يتطلب التطبيق تحديد الموقع لتقديم الخدمات المخصصة.
+UIBackgroundModes: fetch remote-notification
