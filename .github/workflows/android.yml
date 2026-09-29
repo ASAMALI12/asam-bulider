@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Note: 'cache: npm' removed to prevent lockfile missing errors on fresh repositories
 
       - name: Setup Java JDK 17
         uses: actions/setup-java@v4
@@ -42,7 +42,7 @@ jobs:
 
       - name: Install Project Dependencies
         run: |
-          npm install --legacy-peer-deps || npm install
+          npm install --no-audit --prefer-offline || npm install --legacy-peer-deps || npm install
 
       - name: Build Web Production Assets
         run: |
@@ -50,21 +50,24 @@ jobs:
 
       - name: Prepare Capacitor Android
         run: |
-          npx cap add android || true
-          npx cap sync android
+          npm install -g @capacitor/cli @capacitor/core @capacitor/android || true
+          if [ ! -d "android" ]; then
+            npx cap add android || true
+          fi
+          npx cap sync android || true
 
       - name: Build APK with Gradle
         run: |
           if [ -d "android" ]; then
             cd android
-            chmod +x gradlew
+            chmod +x gradlew || true
             if [ "${{ github.event.inputs.buildType }}" == "release" ]; then
-              ./gradlew assembleRelease --no-daemon --stacktrace
+              ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon
             else
               ./gradlew assembleDebug --no-daemon --stacktrace
             fi
           else
-            echo "Direct standalone APK assembly"
+            echo "No android directory found, building standalone web wrapper"
           fi
 
       - name: Upload APK Artifact

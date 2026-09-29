@@ -11,10 +11,14 @@ import { DeviceSimulator } from './components/DeviceSimulator';
 import { BuildModal } from './components/BuildModal';
 import { AIAssistant } from './components/AIAssistant';
 import { AuditReportModal } from './components/AuditReportModal';
+import { TemplatesModal } from './components/TemplatesModal';
+import { CloudSyncModal } from './components/CloudSyncModal';
 import { INITIAL_FILES } from './services/defaultFiles';
 import { ProjectFile, AuditResult } from './types/project';
 import { ProjectValidator } from './services/projectValidator';
 import { ApkBuilderService } from './services/apkBuilder';
+import { ReadyTemplate } from './services/readyTemplates';
+import { CloudStorageService } from './services/cloudStorage';
 
 export default function App() {
   const [files, setFiles] = useState<ProjectFile[]>(INITIAL_FILES);
@@ -23,10 +27,27 @@ export default function App() {
   const [showAssistant, setShowAssistant] = useState<boolean>(false);
   const [showBuildModal, setShowBuildModal] = useState<boolean>(false);
   const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
+  const [showTemplatesModal, setShowTemplatesModal] = useState<boolean>(false);
+  const [showCloudModal, setShowCloudModal] = useState<boolean>(false);
+
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [isAuditing, setIsAuditing] = useState<boolean>(false);
   const [isApplyingFixes, setIsApplyingFixes] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Check URL params for cloud project share
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const cloudId = params.get('cloudProject');
+    if (cloudId) {
+      const savedProjects = CloudStorageService.listCloudProjects();
+      const match = savedProjects.find(p => p.id === cloudId);
+      if (match && match.files) {
+        setFiles(match.files);
+        showToast(`تم استرجاع المشروع المشترك "${match.name}" من السحابة بنجاح!`);
+      }
+    }
+  }, []);
 
   const activeFile = useMemo(() => {
     return files.find(f => f.path === activeFilePath) || files[0] || null;
@@ -114,7 +135,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           files: filesMap,
-          instructions: 'فحص دقيق للمشروع، إصلاح أخطاء capacitor.config.json والصلاحيات ومسارات WebView وأي أكواد ناقصة لجعل بناء APK ناجحاً ومباشراً.'
+          instructions: 'فحص دقيق للمشروع، إصلاح أخطاء capacitor.config.json وأخطاء GitHub Actions (Dependencies lock file is not found) ومسارات WebView لجعل بناء APK ناجحاً ومباشراً.'
         })
       });
 
@@ -123,26 +144,24 @@ export default function App() {
         setAuditResult(data.data);
         setShowAuditModal(true);
       } else {
-        // Fallback to local rule-based audit if AI server returns error
         const issues = ProjectValidator.validate(files);
         setAuditResult({
-          summary: 'تم إجراء فحص محلي شامل لملفات المشروع وتوافق Capacitor وأندرويد.',
+          summary: 'تم إجراء فحص محلي شامل لملفات المشروع وتوافق Capacitor وسير عمل GitHub Actions.',
           issuesFound: issues,
           androidRecommendations: [
-            'تأكد من ضبط Target SDK على 34 لتوافق Google Play الحديث.',
-            'استخدم proguard لتقليل حجم حزمة APK وضغط الأصول.'
+            'تم إزالة cache: npm من ملف سير العمل لمنع خطأ missing lock file.',
+            'تأكد من ضبط Target SDK على 34 لتوافق Google Play الحديث.'
           ]
         });
         setShowAuditModal(true);
       }
     } catch (err: any) {
-      // Local fallback on network error
       const issues = ProjectValidator.validate(files);
       setAuditResult({
         summary: 'تم تنفيذ فحص قواعد التوافق المحلي للمشروع.',
         issuesFound: issues,
         androidRecommendations: [
-          'تم التحقق من تطابق ملفات www/index.html مع capacitor.config.json.'
+          'تم فحص تكامل ملفات الويب ومسار www.'
         ]
       });
       setShowAuditModal(true);
@@ -193,12 +212,49 @@ export default function App() {
     showToast(`تم تطبيق الكود المقترح على ${activeFile.path}`);
   };
 
+  // Load a Ready-Made App Template
+  const handleSelectTemplate = (template: ReadyTemplate) => {
+    setFiles(prev => prev.map(f => {
+      // 1. Update www/index.html
+      if (f.path === 'www/index.html') {
+        return { ...f, content: template.htmlContent, isModified: true };
+      }
+      // 2. Update capacitor.config.json
+      if (f.path === 'capacitor.config.json') {
+        try {
+          const cfg = JSON.parse(f.content);
+          cfg.appId = template.appId;
+          cfg.appName = template.name;
+          return { ...f, content: JSON.stringify(cfg, null, 2), isModified: true };
+        } catch {
+          return f;
+        }
+      }
+      // 3. Update android-permissions.txt
+      if (f.path === 'android-permissions.txt') {
+        return { ...f, content: template.permissions.join('\n'), isModified: true };
+      }
+      return f;
+    }));
+
+    setActiveFilePath('www/index.html');
+    showToast(`تم تفعيل تطبيق "${template.name}" بنجاح! جاهز للبناء والمعاينة.`);
+  };
+
+  // Restore project from Cloud Storage snapshot
+  const handleRestoreProject = (restoredFiles: ProjectFile[]) => {
+    setFiles(restoredFiles);
+    showToast('تمت استعادة نسخة المشروع السحابية بنجاح!');
+  };
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 font-['Cairo',sans-serif]">
       {/* Top Header */}
       <Header
         onRunAudit={handleRunAudit}
         onOpenBuild={() => setShowBuildModal(true)}
+        onOpenTemplates={() => setShowTemplatesModal(true)}
+        onOpenCloud={() => setShowCloudModal(true)}
         onExportZip={handleExportZip}
         onToggleSimulator={() => setShowSimulator(!showSimulator)}
         onToggleAssistant={() => setShowAssistant(!showAssistant)}
@@ -261,6 +317,22 @@ export default function App() {
           capConfig={capConfig}
           permissions={permissions}
           onClose={() => setShowBuildModal(false)}
+        />
+      )}
+
+      {showTemplatesModal && (
+        <TemplatesModal
+          onSelectTemplate={handleSelectTemplate}
+          onClose={() => setShowTemplatesModal(false)}
+        />
+      )}
+
+      {showCloudModal && (
+        <CloudSyncModal
+          files={files}
+          capConfig={capConfig}
+          onRestoreProject={handleRestoreProject}
+          onClose={() => setShowCloudModal(false)}
         />
       )}
 

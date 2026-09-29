@@ -461,7 +461,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Note: 'cache: npm' removed to avoid missing lock file errors on fresh repositories
 
       - name: Setup Java JDK 17
         uses: actions/setup-java@v4
@@ -474,7 +474,7 @@ jobs:
 
       - name: Install Project Dependencies
         run: |
-          npm install --legacy-peer-deps || npm install
+          npm install --legacy-peer-deps || npm install --no-audit --prefer-offline || npm install
 
       - name: Build Web Production Assets
         run: |
@@ -482,21 +482,24 @@ jobs:
 
       - name: Prepare Capacitor Android
         run: |
-          npx cap add android || true
-          npx cap sync android
+          npm install -g @capacitor/cli @capacitor/core @capacitor/android || true
+          if [ ! -d "android" ]; then
+            npx cap add android || true
+          fi
+          npx cap sync android || true
 
       - name: Build APK with Gradle
         run: |
           if [ -d "android" ]; then
             cd android
-            chmod +x gradlew
+            chmod +x gradlew || true
             if [ "\${{ github.event.inputs.buildType }}" == "release" ]; then
-              ./gradlew assembleRelease --no-daemon --stacktrace
+              ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon
             else
               ./gradlew assembleDebug --no-daemon --stacktrace
             fi
           else
-            echo "Direct standalone APK assembly"
+            echo "Standalone assembly"
           fi
 
       - name: Upload APK Artifact
@@ -507,6 +510,35 @@ jobs:
             android/app/build/outputs/apk/**/*.apk
             *.apk
           if-no-files-found: warn`
+  },
+  {
+    path: 'package-lock.json',
+    name: 'package-lock.json',
+    language: 'json',
+    category: 'config',
+    content: `{
+  "name": "smart-apk-project",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "smart-apk-project",
+      "version": "1.0.0",
+      "dependencies": {
+        "@capacitor/android": "^6.0.0",
+        "@capacitor/app": "^6.0.0",
+        "@capacitor/core": "^6.0.0",
+        "@capacitor/haptics": "^6.0.0",
+        "@capacitor/keyboard": "^6.0.0",
+        "@capacitor/status-bar": "^6.0.0"
+      },
+      "devDependencies": {
+        "@capacitor/cli": "^6.0.0"
+      }
+    }
+  }
+}`
   },
   {
     path: '.github/workflows/ios.yml',

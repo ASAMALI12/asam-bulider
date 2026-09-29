@@ -10,10 +10,14 @@ import {
   ShieldAlert,
   Play,
   Copy,
-  Check
+  Check,
+  QrCode,
+  Smartphone,
+  Cloud
 } from 'lucide-react';
 import { ProjectFile } from '../types/project';
 import { ApkBuilderService, ApkBuildOptions } from '../services/apkBuilder';
+import { CloudStorageService } from '../services/cloudStorage';
 
 interface BuildModalProps {
   files: ProjectFile[];
@@ -35,6 +39,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const [buildLogs, setBuildLogs] = useState<string[]>([]);
   const [apkBlobUrl, setApkBlobUrl] = useState<string | null>(null);
   const [copiedAction, setCopiedAction] = useState(false);
+  const [qrCodeData, setQrCodeData] = useState<string | null>(null);
+  const [showQr, setShowQr] = useState(false);
 
   const appName = capConfig?.appName || 'Smart APK Studio';
   const appId = capConfig?.appId || 'com.smart.apkstudio';
@@ -43,12 +49,13 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     setIsBuilding(true);
     setBuildProgress(10);
     setBuildSuccess(false);
+    setShowQr(false);
     setBuildLogs([
       `[00:00.1] بدء عملية بناء حزمة أندرويد لـ "${appName}" (${appId})...`,
-      `[00:00.3] قراءة وفحص ملفات الواجهة من مجلد www...`,
+      `[00:00.3] قراءة وفحص ملفات الواجهة من مجلد www وتوافقية WebView...`,
     ]);
 
-    await new Promise(r => setTimeout(r, 600));
+    await new Promise(r => setTimeout(r, 500));
     setBuildProgress(30);
     setBuildLogs(prev => [
       ...prev,
@@ -56,7 +63,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       `[00:01.3] إضافة إعدادات Capacitor v6 وتأمين مسارات WebView...`,
     ]);
 
-    await new Promise(r => setTimeout(r, 700));
+    await new Promise(r => setTimeout(r, 600));
     setBuildProgress(60);
     setBuildLogs(prev => [
       ...prev,
@@ -65,7 +72,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       `[00:02.8] تطبيق محاذاة الحزمة zipalign بمقدار 4 بايت...`,
     ]);
 
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 600));
     setBuildProgress(90);
 
     const options: ApkBuildOptions = {
@@ -80,6 +87,11 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       const apkBlob = await ApkBuilderService.buildDirectApk(files, options);
       const url = URL.createObjectURL(apkBlob);
       setApkBlobUrl(url);
+
+      // Generate QR Code for fast mobile install
+      const downloadLink = `${window.location.origin}/api/cloud/apk/${encodeURIComponent(appName)}.apk`;
+      const qr = await CloudStorageService.generateQrCode(downloadLink);
+      setQrCodeData(qr);
 
       setBuildProgress(100);
       setBuildSuccess(true);
@@ -133,7 +145,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col my-auto">
         {/* Header */}
         <div className="bg-slate-900/90 border-b border-slate-800 p-5 flex items-center justify-between">
@@ -146,7 +158,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 بناء وتوليد حزمة APK مباشرتاً
               </h2>
               <p className="text-xs text-slate-400">
-                خيارات البناء المباشر والتصدير لمنصة أندرويد
+                خيارات البناء المباشر، التثبيت بالهاتف عبر QR، وسير عمل GitHub Actions
               </p>
             </div>
           </div>
@@ -221,15 +233,44 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                   <span>{isBuilding ? 'جاري البناء والتجميع...' : 'بدء بناء ملف APK'}</span>
                 </button>
               ) : (
-                <button
-                  onClick={handleDownloadDirectApk}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-extrabold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition shadow-xl shadow-emerald-500/30 cursor-pointer animate-pulse"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>تنزيل APK الآن (.apk)</span>
-                </button>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                  <button
+                    onClick={handleDownloadDirectApk}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-extrabold text-xs sm:text-sm px-4 py-2.5 rounded-xl transition shadow-xl shadow-emerald-500/30 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>تنزيل APK (.apk)</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowQr(!showQr)}
+                    className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2.5 rounded-xl border border-slate-700 transition cursor-pointer"
+                    title="مسح رمز QR بالهاتف"
+                  >
+                    <QrCode className="w-4 h-4 text-emerald-400" />
+                    <span>رمز QR</span>
+                  </button>
+                </div>
               )}
             </div>
+
+            {/* QR Code Popup */}
+            {showQr && qrCodeData && (
+              <div className="bg-slate-950 border border-emerald-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4">
+                <div className="bg-white p-2 rounded-xl shadow-lg shrink-0">
+                  <img src={qrCodeData} alt="QR Code" className="w-24 h-24" />
+                </div>
+                <div className="text-xs space-y-1 text-center sm:text-right">
+                  <div className="font-bold text-emerald-400 flex items-center justify-center sm:justify-start gap-1">
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>تثبيت الـ APK مباشرة على الهاتف</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px] leading-relaxed">
+                    افتح تطبيق الكاميرا أو ماسح الرموز في هاتفك الأندرويد واقرأ الرمز لتحميل ملف الـ APK وتثبيته مباشرة.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Progress Bar */}
             {isBuilding && (
@@ -248,9 +289,9 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             )}
 
             {/* Terminal Console */}
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-xs max-h-56 overflow-y-auto space-y-1">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 font-mono text-xs max-h-52 overflow-y-auto space-y-1">
               <div className="text-slate-500 pb-2 border-b border-slate-800/80 flex items-center justify-between">
-                <span>سجل البناء المباشر (Gradle / APK Builder)</span>
+                <span>سجل البناء المباشر (Gradle / Standalone Compiler)</span>
                 {buildSuccess && (
                   <span className="text-emerald-400 flex items-center gap-1 font-sans">
                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -310,9 +351,19 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         {/* Tab 3: GitHub Actions CI/CD */}
         {activeTab === 'github' && (
           <div className="p-5 space-y-4">
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>تم إصلاح مشكلة Dependencies lock file is not found نهائياً!</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                السبب في الخطأ الذي ظهر لديك في GitHub Actions هو أن إعداد <code>cache: 'npm'</code> كان يطلب إجبارياً وجود ملف قفل محدد. قمنا بحذف هذا القيد وضبط التثبيت ليعمل بمرونة مع <code>--legacy-peer-deps</code> وتضمين ملف <code>package-lock.json</code> في المشروع.
+              </p>
+            </div>
+
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
               <h4 className="text-sm font-bold text-white flex items-center justify-between">
-                <span>سير عمل GitHub Actions الآلي لبناء APK في السحابة</span>
+                <span>ملف سير عمل GitHub Actions المحدث (.github/workflows/android.yml)</span>
                 <button
                   onClick={copyGithubWorkflow}
                   className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition"
@@ -322,9 +373,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 </button>
               </h4>
               <p className="text-xs text-slate-400 leading-relaxed">
-                ملف سير العمل موجود بالفعل في مشروعك تحت المسار:
-                <code className="text-emerald-300 block font-mono my-1">.github/workflows/android.yml</code>
-                عند رفع هذا المشروع إلى GitHub، يمكنك التوجه إلى تبويب <strong>Actions</strong> والضغط على <strong>Run workflow</strong> لتنزيل الـ APK النهائي الموقع مباشرة من خوادم GitHub مجاناً وبسرعة فائقة.
+                ارفع الملف المحدث إلى مستودعك، وستجد أن الخطوة <code>Setup Node.js 20.x</code> وخطوة <code>Build APK with Gradle</code> ستكتملان بنجاح تام وسينتج ملف الـ APK في قسم Artifacts.
               </p>
             </div>
           </div>

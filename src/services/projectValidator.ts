@@ -101,13 +101,33 @@ export class ProjectValidator {
       }
     }
 
-    // 3. Check GitHub Action Workflow
+    // 3. Check GitHub Action Workflow & Lockfile Dependency (GitHub Actions Fix)
     const workflow = files.find(f => f.path === '.github/workflows/android.yml');
+    const hasLockfile = files.some(f => f.path === 'package-lock.json' || f.path.includes('lock'));
+
     if (!workflow) {
       issues.push({
         type: 'warning',
         file: '.github/workflows/android.yml',
         description: 'ملف سير عمل البناء الآلي لـ APK مفقود، يوصى بإنشائه لتمكين بناء APK سحابياً عبر GitHub Actions.',
+        autoFixable: true
+      });
+    } else {
+      if (workflow.content.includes("cache: 'npm'") || workflow.content.includes('cache: "npm"')) {
+        issues.push({
+          type: 'error',
+          file: '.github/workflows/android.yml',
+          description: 'خطأ GitHub Actions: استخدام cache: npm يتسبب في فشل البناء إذا لم يكن ملف package-lock.json موجوداً. تم إصلاحه وإزالة التبعية الصارمة للملف.',
+          autoFixable: true
+        });
+      }
+    }
+
+    if (!hasLockfile) {
+      issues.push({
+        type: 'optimization',
+        file: 'package-lock.json',
+        description: 'ينصح بتضمين ملف package-lock.json لتسريع تثبيت الحزم وضمان توافق CI/CD.',
         autoFixable: true
       });
     }
